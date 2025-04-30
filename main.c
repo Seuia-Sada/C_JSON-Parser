@@ -130,14 +130,14 @@ struct ParseString ParseValue(FILE* const source)
 
 void ParseNode(FILE* const source, bool const node_with_propertyes)
 {
-    union {
-        bool bracket_type;
-        bool property_actision;
-
-    }   bool_share = {node_with_propertyes};
-
     do
     {
+        union {
+            bool bracket_type;
+            bool property_actision;
+
+        }   bool_share = {node_with_propertyes};
+
         string_attribute_parsing:
 
         switch (fgetc(source))
@@ -157,8 +157,6 @@ void ParseNode(FILE* const source, bool const node_with_propertyes)
                 goto string_attribute_parsing;
             }
 
-            bool_share.property_actision = node_with_propertyes;
-
             break;
         case '{':
             bool_share.bracket_type = true;
@@ -167,8 +165,6 @@ void ParseNode(FILE* const source, bool const node_with_propertyes)
 
             if (close_bracket[bool_share.bracket_type] != fgetc(source))
                 ; // ParseError()
-
-            bool_share.property_actision = node_with_propertyes;
 
             break;
 
