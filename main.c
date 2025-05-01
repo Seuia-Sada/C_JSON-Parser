@@ -1,4 +1,6 @@
 
+#include <ctype.h>
+
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -6,7 +8,7 @@
 #include <stdio.h>
 
 enum jType /*: char unsigned*/ {
-    jNULL,
+    jNull,
     jBoolean,
     jNumber,
     jString,
@@ -126,6 +128,85 @@ struct ParseString ParseValue(FILE* const source)
     value.byte = EOF;
 
     return value;
+}
+
+void implement__NumberParsing(FILE* const source)
+{
+    union ParseNumber_bit_flags {
+        uint8_t bits;
+
+        struct {
+            uint8_t 
+                base_signal       :1, 
+                base_value        :1, 
+                fraction_notation :1, 
+                fraction_value    :1, 
+                expoent_notation  :1, 
+                expoent_signal    :1, 
+                expoent_value     :1;
+        };
+    };
+
+    struct ParserNumber {
+        union ParseNumber_bit_flags flags;
+
+        uint16_t base_size, fraction_size, expoent_size;
+    };
+
+    union ParseNumber_bit_flags pFlags = {0};
+
+    [[maybe_unused]] // Temporary
+    uint16_t 
+        base_size     = 0,
+        fraction_size = 0,
+        expoent_size  = 0;
+
+    for (;;) {
+        char const character = fgetc(source);
+
+        switch (character) {
+        case '+':
+        case '-':
+            if (! pFlags.base_value)
+                pFlags.base_signal = true;
+
+            else {
+                if (pFlags.expoent_notation && pFlags.expoent_value)
+                    ; //ParseError()
+
+                pFlags.expoent_value = true;
+            }
+
+            break;
+        case '.':
+            if (false == pFlags.base_value || pFlags.fraction_notation)
+                ; // ParseError()
+
+            pFlags.fraction_notation = true;
+
+            break;
+        case 'e':
+        case 'E':
+            if (pFlags.expoent_notation)
+                ; // ParseError()
+
+            if (false == (pFlags.fraction_value || (pFlags.fraction_notation ^ pFlags.base_value)))
+                ; // ParseError()
+
+            pFlags.expoent_notation = true;
+
+            break;
+
+        default: // -- Implement -- Increase of the variables [base_size, fraction_size, expoent_size]
+            if(isalpha(character))
+                ; // ParseError()
+
+            if (isdigit(character)) {
+                pFlags.expoent_value |= pFlags.expoent_notation;
+                break;
+            }
+        }
+    }
 }
 
 void ParseNode(FILE* const source, bool const node_with_propertyes)
