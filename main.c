@@ -61,6 +61,27 @@ struct ParseString {
     fpos_t   byte;
 };
 
+union ParseNumber_bit_flags {
+    uint8_t bits :7;
+
+    struct {
+        uint8_t 
+            base_signal       :1, 
+            base_value        :1, 
+            fraction_notation :1, 
+            fraction_value    :1, 
+            expoent_notation  :1, 
+            expoent_signal    :1, 
+            expoent_value     :1;
+    };
+};
+
+struct ParseNumber {
+    union ParseNumber_bit_flags flags;
+
+    uint16_t base_size, fraction_size, expoent_size;
+};
+
 struct ParseString ParseString(FILE* const source, bool const rewind_stream)
 {
     struct ParseString str = {.size = 0, .byte = ftell(source)};
@@ -75,15 +96,6 @@ struct ParseString ParseString(FILE* const source, bool const rewind_stream)
         if ('"' == fgetc(source))
             break;
 
-        /*
-        if (feof(source)) {
-            str.size = 0;
-            str.byte = EOF;
-
-            return str;
-        }
-        */
-
         ++str.size;
     }
 
@@ -95,9 +107,9 @@ struct ParseString ParseString(FILE* const source, bool const rewind_stream)
 
 struct ParseString ParseValue(FILE* const source)
 {
-    uint8_t word_index = 0, expression_length = 0;
+    fpos_t const value_origin = ftell(source);
 
-    struct ParseString value = {.size = 0, .byte = ftell(source)};
+    uint8_t word_index = 0, expression_length = 0;
 
     switch (fgetc(source)) {
         static char const *const reserved_words[3] = {"null", "true", "false"};
@@ -114,67 +126,66 @@ struct ParseString ParseValue(FILE* const source)
             if (expression[c_cmp] != fgetc(source))
                 ; // ParseError()
 
-        value.size = expression_length;
+        switch (fgetc(source)) {
+        case ',':
+        case ']':
+        case '}': fseek(source, -1, SEEK_CUR); break;
 
-        return value;
+        default:
+            ; // ParseError()
+
+            break;
+        }
+
+        return (struct ParseString){expression_length, value_origin};
 
     default:
         fseek(source, -1, SEEK_CUR);
+
+        // -- Implement -- Numbers
+
         break;
     }
 
-    // -- Implement -- Numbers
-
-    value.byte = EOF;
-
-    return value;
+    return (struct ParseString){.size = 0, .byte = EOF};
 }
 
-void implement__NumberParsing(FILE* const source)
+struct ParseNumber implement__NumberParsing(FILE* const source)
 {
-    union ParseNumber_bit_flags {
-        uint8_t bits;
+    union ParseNumber_bit_flags pFlags = {.bits = 0};
 
-        struct {
-            uint8_t 
-                base_signal       :1, 
-                base_value        :1, 
-                fraction_notation :1, 
-                fraction_value    :1, 
-                expoent_notation  :1, 
-                expoent_signal    :1, 
-                expoent_value     :1;
-        };
-    };
-
-    struct ParserNumber {
-        union ParseNumber_bit_flags flags;
-
-        uint16_t base_size, fraction_size, expoent_size;
-    };
-
-    union ParseNumber_bit_flags pFlags = {0};
-
-    [[maybe_unused]] // Temporary
     uint16_t 
         base_size     = 0,
         fraction_size = 0,
         expoent_size  = 0;
 
-    for (;;) {
+    for (;;)
+    {
         char const character = fgetc(source);
 
         switch (character) {
+        case ',':
+        case ']':
+        case '}':
+            if (! pFlags.base_value)
+                ; // ParseError()
+
+            if (0134 ^ (0134 & pFlags.bits))
+                ; // ParseError()
+
+            fseek(source, -1, SEEK_CUR);
+
+            return (struct ParseNumber){pFlags, base_size, fraction_size, expoent_size};
         case '+':
         case '-':
             if (! pFlags.base_value)
                 pFlags.base_signal = true;
 
             else {
-                if (pFlags.expoent_notation && pFlags.expoent_value)
+                if (!pFlags.expoent_notation || pFlags.expoent_value)
                     ; //ParseError()
 
-                pFlags.expoent_value = true;
+                pFlags.expoent_signal = true;
             }
 
             break;
@@ -197,12 +208,30 @@ void implement__NumberParsing(FILE* const source)
 
             break;
 
-        default: // -- Implement -- Increase of the variables [base_size, fraction_size, expoent_size]
+        default:
             if(isalpha(character))
                 ; // ParseError()
 
-            if (isdigit(character)) {
-                pFlags.expoent_value |= pFlags.expoent_notation;
+            if (! isdigit(character))
+                ; // ParseError()
+
+            switch (0136 & pFlags.bits) {
+            case 0036:
+            case 0022:
+                pFlags.expoent_value = true;
+            case 0136:
+            case 0122:
+                ++expoent_size;
+                break;
+            case 0006:
+                pFlags.fraction_value = true;
+            case 0016:
+                ++fraction_size;
+                break;
+            case 0000:
+                pFlags.base_value = true;
+            case 0002:
+                ++base_size;
                 break;
             }
         }
